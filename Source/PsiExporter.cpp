@@ -32,7 +32,7 @@ void writeString(FILE* stream, const std::string s)
 void PsiExporter::exportScene(std::string filePath, const Scene& scene)
 {
     FILE* pFile;
-    pFile = fopen("Scene.psi", "wb");
+    pFile = fopen(filePath.c_str(), "wb");
 
     fwrite(&scene.camera, sizeof(Camera), 1, pFile);
 
