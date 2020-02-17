@@ -5,6 +5,13 @@
 
 namespace psi
 {
+    struct Vector2f
+    {
+        Vector2f() : x(0), y(0) { }
+        Vector2f(float x, float y) : x(x), y(y) { }
+        float x, y;
+    };
+
     struct Vector3f
     {
         Vector3f() : x(0), y(0), z(0) { }
