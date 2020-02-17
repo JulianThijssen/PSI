@@ -29,6 +29,14 @@ namespace psi
         float far;
     };
 
+    class Texture
+    {
+    public:
+        int width;
+        int height;
+        std::vector<unsigned char> data;
+    };
+
     class Material
     {
     public:
