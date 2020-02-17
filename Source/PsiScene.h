@@ -59,6 +59,23 @@ namespace psi
         int materialIndex;
     };
 
+    class Model
+    {
+    public:
+        std::vector<psi::Mesh> meshes;
+    };
+
+    class Entity
+    {
+    public:
+        std::string name;
+        Vector3f position;
+        Vector3f rotation;
+        Vector3f scale;
+
+        int modelIndex;
+    };
+
     class Scene
     {
     public:
