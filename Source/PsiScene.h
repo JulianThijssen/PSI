@@ -2,6 +2,7 @@
 
 #include <string>
 #include <vector>
+#include <memory>
 
 namespace psi
 {
@@ -40,8 +41,14 @@ namespace psi
     class Material
     {
     public:
-        Vector3f albedo;
-        Vector3f emission;
+        std::string name;
+        Vector3f albedo = Vector3f(1, 1, 1);
+        Vector3f emission = Vector3f(0, 0, 0);
+        float roughness = 1;
+        float metalness = 0;
+
+        std::unique_ptr<Texture> albedoTex;
+        bool hasAlbedoTexture = false;
     };
 
     struct Face
@@ -54,6 +61,7 @@ namespace psi
     public:
         std::vector<Vector3f> vertices;
         std::vector<Vector3f> normals;
+        std::vector<Vector2f> texCoords;
         std::vector<Face> faces;
 
         int materialIndex;
@@ -82,13 +90,17 @@ namespace psi
         Camera camera;
 
         std::vector<psi::Material> materials;
-        std::vector<psi::Mesh> meshes;
+        std::vector<psi::Model> models;
+        std::vector<psi::Entity> entities;
     };
 
+    bool operator==(const psi::Vector2f& lhs, const psi::Vector2f& rhs);
     bool operator==(const psi::Vector3f& lhs, const psi::Vector3f& rhs);
     bool operator==(const psi::Camera& lhs, const psi::Camera& rhs);
+    bool operator==(const psi::Texture& lhs, const psi::Texture& rhs);
     bool operator==(const psi::Material& lhs, const psi::Material& rhs);
     bool operator==(const psi::Face& lhs, const psi::Face& rhs);
     bool operator==(const psi::Mesh& lhs, const psi::Mesh& rhs);
+    bool operator==(const psi::Model& lhs, const psi::Model& rhs);
     bool operator==(const psi::Scene& lhs, const psi::Scene& rhs);
 }

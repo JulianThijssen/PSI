@@ -54,6 +54,7 @@ add_dependencies(${IO_TEST} ${IO_LIBRARY})
 
 # Specify the libraries to use when linking the executable
 target_link_libraries (${IO_TEST} ${IO_LIBRARY})
+target_link_libraries (${IO_TEST} ${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/Libraries/assimp.lib)
 
 install(TARGETS ${IO_TEST}
     RUNTIME DESTINATION ${OUTPUT_DIR}/tests

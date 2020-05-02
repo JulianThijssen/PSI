@@ -7,10 +7,18 @@
 #include <vector>
 #include <string>
 #include <fstream>
+#include <sstream>
 #include <iostream>
 
 #include "nlohmann/json_fwd.hpp"
 #include "nlohmann/json.hpp"
+
+#include "assimp/Importer.hpp"
+#include "assimp/scene.h"
+#include "assimp/postprocess.h"
+
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
 
 using namespace psi;
 
@@ -44,11 +52,41 @@ Vector3f readVector3f(json& element)
     return { element[0], element[1], element[2] };
 }
 
+std::vector<std::string> readStrings(json& element)
+{
+    std::vector<std::string> strings;
+    int numElements = element.size();
+
+    for (int i = 0; i < numElements; i++)
+    {
+        strings.push_back(element[i]);
+    }
+    return strings;
+}
+
+bool loadPng(std::string path, Texture& texture)
+{
+    int bpp;
+    unsigned char* data;
+    data = stbi_load(path.c_str(), &texture.width, &texture.height, &bpp, STBI_rgb_alpha);
+
+    if (!data) {
+        std::cout << "Failed to load image at: " << path << std::endl;
+        return false;
+    }
+    std::cout << "Loaded image with width: " << texture.width << " height: " << texture.height << " bpp: " << bpp << std::endl;
+    texture.data.resize(texture.width * texture.height * 4);
+    std::memcpy(texture.data.data(), data, sizeof(unsigned char) * texture.width * texture.height * 4);
+    delete[] data;
+
+    return true;
+}
+
 bool loadScene(std::string sceneFile)
 {
     Scene scene;
 
-    std::cout << "LOADING SCENE" << std::endl;
+    std::cout << "LOADING SCENE: " << sceneFile.c_str() << std::endl;
     std::ifstream inFile;
 
     inFile.open(sceneFile.c_str(), std::ios::in | std::ios::binary);
@@ -67,174 +105,218 @@ bool loadScene(std::string sceneFile)
     }
 
     const char* cont = contents.c_str();
-
+    std::cout << "Parsing file contents.." << std::endl;
     json j3 = json::parse(cont);
-
+    std::cout << "Processing json.." << std::endl;
     for (json& element : j3["materials"]) {
         std::string name = element["id"].get<std::string>();
         std::string path = element["path"].get<std::string>();
 
-        //MaterialDesc material(name, path);
-        //std::cout << material.name << " " << material.path << std::endl;
-        //scene.materials.push_back(material);
+        std::string line;
+        std::ifstream materialFile(path);
+        if (materialFile.is_open())
+        {
+            Material material;
+
+            while (std::getline(materialFile, line))
+            {
+                std::vector<std::string> tokens;
+                std::string token;
+
+                std::istringstream is(line);
+                while (std::getline(is, token, ' '))
+                {
+                    tokens.push_back(token);
+                }
+
+                if (tokens.empty())
+                    continue;
+
+                std::string key = tokens[0];
+
+                if (key == "Name")
+                {
+                    if (tokens.size() != 2)
+                    {
+                        std::cout << "Missing material name" << std::endl;
+                        continue;
+                    }
+                    material.name = tokens[1];
+                    std::cout << "Name: " << material.name << std::endl;
+                }
+                if (key == "Albedo")
+                {
+                    if (tokens.size() != 4)
+                    {
+                        std::cout << "Wrong number of values for albedo" << std::endl;
+                        continue;
+                    }
+                    material.albedo = Vector3f(std::stof(tokens[1]), std::stof(tokens[2]), std::stof(tokens[3]));
+                    std::cout << "Albedo: " << material.albedo.x << " " << material.albedo.y << " " << material.albedo.z << std::endl;
+                }
+                if (key == "Roughness")
+                {
+                    if (tokens.size() != 2)
+                    {
+                        std::cout << "Wrong number of arguments for roughness" << std::endl;
+                        continue;
+                    }
+                    material.roughness = std::stof(tokens[1]);
+                }
+                if (key == "Metalness")
+                {
+                    if (tokens.size() != 2)
+                    {
+                        std::cout << "Wrong number of arguments for metalness" << std::endl;
+                        continue;
+                    }
+                    material.metalness = std::stof(tokens[1]);
+                }
+                if (key == "Emission")
+                {
+                    if (tokens.size() != 4)
+                    {
+                        std::cout << "Wrong number of values for emission" << std::endl;
+                        continue;
+                    }
+                    material.emission = Vector3f(std::stof(tokens[1]), std::stof(tokens[2]), std::stof(tokens[3]));
+                    std::cout << "Emission: " << material.emission.x << " " << material.emission.y << " " << material.emission.z << std::endl;
+                }
+                if (key == "AlbedoTex")
+                {
+                    if (tokens.size() != 2)
+                    {
+                        std::cout << "Wrong number of arguments for albedo texture" << std::endl;
+                        continue;
+                    }
+                    std::string path = tokens[1];
+
+                    material.albedoTex = std::make_unique<Texture>();
+                    bool loaded = loadPng(path, *material.albedoTex);
+                    material.hasAlbedoTexture = loaded;
+                }
+            }
+            scene.materials.push_back(std::move(material));
+        }
     }
     for (json& element : j3["objects"]) {
-        std::string name = element["name"].get<std::string>();
-        
+        psi::Entity entity;
+
+        entity.name = element["name"].get<std::string>();
+
         json& posElement = element["position"];
-        Vector3f position = readVector3f(posElement);
+        entity.position = readVector3f(posElement);
 
         json& rotElement = element["rotation"];
-        Vector3f rotation = readVector3f(rotElement);
+        entity.rotation = readVector3f(rotElement);
 
-        json& cameraElement = element["camera"];
-        json& fovElement = cameraElement["fov"];
-        json& aspectElement = cameraElement["aspect"];
-        json& zNearElement = cameraElement["near"];
-        json& zFarElement = cameraElement["far"];
-        float fov = readFloat(fovElement);
-        float aspect = readFloat(aspectElement);
-        float zNear = readFloat(zNearElement);
-        float zFar = readFloat(zFarElement);
+        json& scaleElement = element["scale"];
+        entity.scale = readVector3f(scaleElement);
 
-        scene.camera = Camera{ Vector3f{ 278, 273, -600 }, Vector3f{ 0, 180, 0 }, fov, aspect, zNear, zFar };
+        json& materialsElement = element["materials"];
+        std::vector<std::string> materialNames = readStrings(materialsElement);
 
-        std::cout << name << " " << std::endl;
-        std::cout << position.x << " " << position.y << " " << position.z << std::endl;
-        std::cout << rotation.x << " " << rotation.y << " " << rotation.z << std::endl;
-        std::cout << fov << " " << aspect << " " << zNear << " " << zFar << std::endl;
+        std::cout << entity.name << std::endl;
+        std::cout << entity.position.x << " " << entity.position.y << " " << entity.position.z << std::endl;
+        std::cout << entity.rotation.x << " " << entity.rotation.y << " " << entity.rotation.z << std::endl;
+        std::cout << entity.scale.x << " " << entity.scale.y << " " << entity.scale.z << std::endl;
+
+        if (entity.name == "MainCamera")
+        {
+            json& cameraElement = element["camera"];
+            json& fovElement = cameraElement["fov"];
+            json& aspectElement = cameraElement["aspect"];
+            json& zNearElement = cameraElement["near"];
+            json& zFarElement = cameraElement["far"];
+            float fov = readFloat(fovElement);
+            float aspect = readFloat(aspectElement);
+            float zNear = readFloat(zNearElement);
+            float zFar = readFloat(zFarElement);
+
+            scene.camera = Camera{ entity.position, entity.rotation, fov, aspect, zNear, zFar };
+            std::cout << fov << " " << aspect << " " << zNear << " " << zFar << std::endl;
+            continue;
+        }
+        else
+        {
+            json& modelElement = element["model"];
+            std::string path = modelElement["path"].get<std::string>();
+            std::cout << path << std::endl;
+
+            Assimp::Importer importer;
+
+            unsigned int flags = aiProcess_Triangulate | aiProcess_GenUVCoords | aiProcess_GenNormals | aiProcess_CalcTangentSpace | aiProcess_SortByPType;
+            const aiScene* aiScene = importer.ReadFile(path, flags);
+
+            if (!aiScene)
+            {
+                std::cout << "Failed to load model: " << importer.GetErrorString() << std::endl;
+                return false;
+            }
+
+            //std::vector<std::string> materialNames;
+            //for (int i = 0; i < aiScene->mNumMaterials; i++)
+            //{
+            //    const aiMaterial* aiMaterial = aiScene->mMaterials[i];
+
+            //    aiString name;
+            //    aiMaterial->Get(AI_MATKEY_NAME, name);
+
+            //    materialNames.emplace_back(name.C_Str());
+            //}
+            
+            Model model;
+            for (int i = 0; i < aiScene->mNumMeshes; i++)
+            {
+                const aiMesh* aiMesh = aiScene->mMeshes[i];
+
+                Mesh mesh;
+                mesh.vertices.resize(aiMesh->mNumVertices);
+                mesh.normals.resize(aiMesh->mNumVertices);
+                mesh.faces.resize(aiMesh->mNumFaces);
+
+                for (int j = 0; j < aiMesh->mNumVertices; j++)
+                {
+                    mesh.vertices[j] = Vector3f(aiMesh->mVertices[j].x * entity.scale.x, aiMesh->mVertices[j].y * entity.scale.y, aiMesh->mVertices[j].z * entity.scale.z);
+                    mesh.normals[j] = Vector3f(aiMesh->mNormals[j].x, aiMesh->mNormals[j].y, aiMesh->mNormals[j].z);
+                }
+                if (aiMesh->HasTextureCoords(0))
+                {
+                    mesh.texCoords.resize(aiMesh->mNumVertices);
+                    for (int j = 0; j < aiMesh->mNumVertices; j++)
+                        mesh.texCoords[j] = Vector2f(aiMesh->mTextureCoords[0][j].x, aiMesh->mTextureCoords[0][j].y);
+                }
+                for (int j = 0; j < aiMesh->mNumFaces; j++)
+                {
+                    const aiFace& aiFace = aiMesh->mFaces[j];
+                    mesh.faces[j] = Face{ aiFace.mIndices[0], aiFace.mIndices[1], aiFace.mIndices[2] };
+                }
+
+                std::string matName = materialNames[0];// materialNames[aiMesh->mMaterialIndex];
+                for (int m = 0; m < scene.materials.size(); m++)
+                {
+                    const Material& material = scene.materials[m];
+                    
+                    if (material.name == matName)
+                    {
+                        mesh.materialIndex = m;
+                    }
+                }
+
+                model.meshes.push_back(mesh);
+            }
+            scene.models.push_back(model);
+            entity.modelIndex = scene.models.size() - 1;
+        }
+        scene.entities.push_back(entity);
     }
-
-    scene.camera = Camera{ Vector3f{ 278, 273, -600 }, Vector3f{ 0, 180, 0 }, 60, 1, 0.1f, 2000.0f };
-
-    Material whiteMaterial;
-    whiteMaterial.albedo = Vector3f{ 0.725f, 0.71f, 0.68f };
-    Material redMaterial;
-    redMaterial.albedo = Vector3f{ 0.63f, 0.065f, 0.05f };
-    Material greenMaterial;
-    greenMaterial.albedo = Vector3f{ 0.14f, 0.45f, 0.091f };
-    Material lightMaterial;
-    lightMaterial.albedo = Vector3f{ 0.725f, 0.71f, 0.68f };
-    lightMaterial.emission = Vector3f{ 85.0f, 60.0f, 20.0f };
-    scene.materials.push_back(whiteMaterial);
-    scene.materials.push_back(redMaterial);
-    scene.materials.push_back(greenMaterial);
-    scene.materials.push_back(lightMaterial);
-
-    Mesh leftWall;
-    leftWall.vertices.push_back(Vector3f{ 552.8f, 0, 0 });
-    leftWall.vertices.push_back(Vector3f{ 549.6f, 0, 559.2f });
-    leftWall.vertices.push_back(Vector3f{ 556.0f, 548.8f, 559.2f });
-    leftWall.vertices.push_back(Vector3f{ 556.0f, 548.8f, 559.2f });
-    leftWall.vertices.push_back(Vector3f{ 552.8f, 0, 0 });
-    leftWall.vertices.push_back(Vector3f{ 556.0f, 548.8f, 0 });
-    leftWall.normals.push_back(Vector3f{ -1, 0, 0 });
-    leftWall.normals.push_back(Vector3f{ -1, 0, 0 });
-    leftWall.normals.push_back(Vector3f{ -1, 0, 0 });
-    leftWall.normals.push_back(Vector3f{ -1, 0, 0 });
-    leftWall.normals.push_back(Vector3f{ -1, 0, 0 });
-    leftWall.normals.push_back(Vector3f{ -1, 0, 0 });
-    leftWall.faces.push_back(Face{ 0, 1, 2 });
-    leftWall.faces.push_back(Face{ 3, 4, 5 });
-    leftWall.materialIndex = 1;
-    scene.meshes.push_back(leftWall);
-
-    Mesh rightWall;
-    rightWall.vertices.push_back(Vector3f{ 0, 0, 0 });
-    rightWall.vertices.push_back(Vector3f{ 0, 0, 559.2f });
-    rightWall.vertices.push_back(Vector3f{ 0, 548.8f, 559.2f });
-    rightWall.vertices.push_back(Vector3f{ 0, 548.8f, 559.2f });
-    rightWall.vertices.push_back(Vector3f{ 0, 0, 0 });
-    rightWall.vertices.push_back(Vector3f{ 0, 548.8f, 0 });
-    rightWall.normals.push_back(Vector3f{ 1, 0, 0 });
-    rightWall.normals.push_back(Vector3f{ 1, 0, 0 });
-    rightWall.normals.push_back(Vector3f{ 1, 0, 0 });
-    rightWall.normals.push_back(Vector3f{ 1, 0, 0 });
-    rightWall.normals.push_back(Vector3f{ 1, 0, 0 });
-    rightWall.normals.push_back(Vector3f{ 1, 0, 0 });
-    rightWall.faces.push_back(Face{ 0, 1, 2 });
-    rightWall.faces.push_back(Face{ 3, 4, 5 });
-    rightWall.materialIndex = 2;
-    scene.meshes.push_back(rightWall);
-
-    Mesh floor;
-    floor.vertices.push_back(Vector3f{ 0, 0, 0 });
-    floor.vertices.push_back(Vector3f{ 552.8f, 0, 0 });
-    floor.vertices.push_back(Vector3f{ 0, 0, 559.2f });
-    floor.vertices.push_back(Vector3f{ 0, 0, 559.2f });
-    floor.vertices.push_back(Vector3f{ 552.8f, 0, 0 });
-    floor.vertices.push_back(Vector3f{ 549.6f, 0, 559.2f });
-    floor.normals.push_back(Vector3f{ 0, 1, 0 });
-    floor.normals.push_back(Vector3f{ 0, 1, 0 });
-    floor.normals.push_back(Vector3f{ 0, 1, 0 });
-    floor.normals.push_back(Vector3f{ 0, 1, 0 });
-    floor.normals.push_back(Vector3f{ 0, 1, 0 });
-    floor.normals.push_back(Vector3f{ 0, 1, 0 });
-    floor.faces.push_back(Face{ 0, 1, 2 });
-    floor.faces.push_back(Face{ 3, 4, 5 });
-    floor.materialIndex = 0;
-    scene.meshes.push_back(floor);
-
-    Mesh backWall;
-    backWall.vertices.push_back(Vector3f{ 0, 0, 559.2f });
-    backWall.vertices.push_back(Vector3f{ 549.6f, 0, 559.2f });
-    backWall.vertices.push_back(Vector3f{ 0, 548.8f, 559.2f });
-    backWall.vertices.push_back(Vector3f{ 0, 548.8f, 559.2f });
-    backWall.vertices.push_back(Vector3f{ 549.6f, 0, 559.2f });
-    backWall.vertices.push_back(Vector3f{ 556.0f, 548.8f, 559.2f });
-    backWall.normals.push_back(Vector3f{ 0, 0, -1 });
-    backWall.normals.push_back(Vector3f{ 0, 0, -1 });
-    backWall.normals.push_back(Vector3f{ 0, 0, -1 });
-    backWall.normals.push_back(Vector3f{ 0, 0, -1 });
-    backWall.normals.push_back(Vector3f{ 0, 0, -1 });
-    backWall.normals.push_back(Vector3f{ 0, 0, -1 });
-    backWall.faces.push_back(Face{ 0, 1, 2 });
-    backWall.faces.push_back(Face{ 3, 4, 5 });
-    backWall.materialIndex = 0;
-    scene.meshes.push_back(backWall);
-
-    Mesh ceiling;
-    ceiling.vertices.push_back(Vector3f{ 0, 548.8f, 0 });
-    ceiling.vertices.push_back(Vector3f{ 556.0f, 548.8f, 0 });
-    ceiling.vertices.push_back(Vector3f{ 0, 548.8f, 559.2f });
-    ceiling.vertices.push_back(Vector3f{ 0, 548.8f, 559.2f });
-    ceiling.vertices.push_back(Vector3f{ 556.0f, 548.8f, 0 });
-    ceiling.vertices.push_back(Vector3f{ 556.0f, 548.8f, 559.2f });
-    ceiling.normals.push_back(Vector3f{ 0, -1, 0 });
-    ceiling.normals.push_back(Vector3f{ 0, -1, 0 });
-    ceiling.normals.push_back(Vector3f{ 0, -1, 0 });
-    ceiling.normals.push_back(Vector3f{ 0, -1, 0 });
-    ceiling.normals.push_back(Vector3f{ 0, -1, 0 });
-    ceiling.normals.push_back(Vector3f{ 0, -1, 0 });
-    ceiling.faces.push_back(Face{ 0, 1, 2 });
-    ceiling.faces.push_back(Face{ 3, 4, 5 });
-    ceiling.materialIndex = 0;
-    scene.meshes.push_back(ceiling);
-
-    Mesh light;
-    light.vertices.push_back(Vector3f{ 213.0f, 548.0f, 227.0f });
-    light.vertices.push_back(Vector3f{ 343.0f, 548.0f, 227.0f });
-    light.vertices.push_back(Vector3f{ 213.0f, 548.0f, 332.0f });
-    light.vertices.push_back(Vector3f{ 213.0f, 548.0f, 332.0f });
-    light.vertices.push_back(Vector3f{ 343.0f, 548.0f, 227.0f });
-    light.vertices.push_back(Vector3f{ 343.0f, 548.0f, 332.0f });
-    light.normals.push_back(Vector3f{ 0, -1, 0 });
-    light.normals.push_back(Vector3f{ 0, -1, 0 });
-    light.normals.push_back(Vector3f{ 0, -1, 0 });
-    light.normals.push_back(Vector3f{ 0, -1, 0 });
-    light.normals.push_back(Vector3f{ 0, -1, 0 });
-    light.normals.push_back(Vector3f{ 0, -1, 0 });
-    light.faces.push_back(Face{ 0, 1, 2 });
-    light.faces.push_back(Face{ 3, 4, 5 });
-    light.materialIndex = 3;
-    scene.meshes.push_back(light);
-
+    
     PsiExporter exporter;
-    exporter.exportScene("ExportedScene.psi", scene);
+    exporter.exportScene("C:/Data/Pathtracer/Build/Scene.psi", scene);
 
     Scene checkScene;
     PsiImporter importer;
-    bool importSuccess = importer.importScene("Scene.psi", checkScene);
+    bool importSuccess = importer.importScene("C:/Data/Pathtracer/Build/Scene.psi", checkScene);
 
     if (!importSuccess)
     {
@@ -261,7 +343,7 @@ int main(int argc, char** argv)
 
     std::cout << cmdArgs.size() << std::endl;
 
-    loadScene("Scene.json");
+    loadScene("Bathroom.json");
 
     return 0;
 }
