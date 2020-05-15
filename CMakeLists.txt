@@ -59,3 +59,5 @@ target_link_libraries (${IO_TEST} ${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/Librari
 install(TARGETS ${IO_TEST}
     RUNTIME DESTINATION ${OUTPUT_DIR}/tests
 )
+
+project (${IO_LIBRARY})

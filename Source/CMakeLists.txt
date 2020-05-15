@@ -1,6 +1,8 @@
 set(DIR ${CMAKE_CURRENT_SOURCE_DIR})
 
 set(IO_LIBRARY_SOURCES
+    ${DIR}/PsiFile.h
+    ${DIR}/PsiFile.cpp
     ${DIR}/PsiScene.h
     ${DIR}/PsiScene.cpp
     ${DIR}/PsiImporter.h

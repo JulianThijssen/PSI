@@ -1,125 +1,96 @@
 #include "PsiExporter.h"
 
 #include "PsiScene.h"
+#include "PsiFile.h"
+
+#include <iostream>
 
 using namespace psi;
 
-const uint8_t* nullchar = new uint8_t('\0');
-const uint32_t materialCode = *(uint32_t*)"MAT";// 0x2054414D;
-const uint32_t meshCode = *(uint32_t*)"MESH";
-const uint32_t entityCode = *(uint32_t*)"ENT";
-
-void writeBool(FILE* stream, const bool b)
+void writeMaterial(File& file, const Material& material)
 {
-    fwrite(&b, sizeof(bool), 1, stream);
+    file.writeInt(File::MATERIAL_CODE);
+    file.writeString(material.name);
+    file.writeVector3f(material.albedo);
+    file.writeVector3f(material.emission);
+    file.writeFloat(material.roughness);
+    file.writeFloat(material.metalness);
+    file.writeBool(material.hasAlbedoTexture);
+    if (material.hasAlbedoTexture)
+    {
+        file.writeInt(material.albedoTex->width);
+        file.writeInt(material.albedoTex->height);
+        file.writeUnsignedCharArray(material.albedoTex->data);
+    }
 }
 
-void writeUnsignedChar(FILE* stream, unsigned char c)
+void writeModel(File& file, const Model& model)
 {
-    fwrite(&c, sizeof(unsigned char), 1, stream);
+    std::cout << "Num meshes: " << model.meshes.size() << std::endl;
+    file.writeInt(model.meshes.size());
+    for (const Mesh& mesh : model.meshes)
+    {
+        file.writeInt(File::MESH_CODE);
+        file.writeInt(mesh.vertices.size());
+        file.writeInt(mesh.normals.size());
+        file.writeInt(mesh.texCoords.size());
+        file.writeInt(mesh.faces.size());
+        std::cout << mesh.materialIndex << std::endl;
+        file.writeInt(mesh.materialIndex);
+        for (const Vector3f& v : mesh.vertices)
+        {
+            file.writeVector3f(v);
+        }
+        for (const Vector3f& n : mesh.normals)
+        {
+            file.writeVector3f(n);
+        }
+        for (const Vector2f& t : mesh.texCoords)
+        {
+            file.writeVector2f(t);
+        }
+        for (const Face& f : mesh.faces)
+        {
+            file.writeInt(f.i0);
+            file.writeInt(f.i1);
+            file.writeInt(f.i2);
+        }
+    }
 }
 
-void writeInt(FILE* stream, const uint32_t i)
+void writeEntity(File& file, const Entity& entity)
 {
-    fwrite(&i, sizeof(uint32_t), 1, stream);
+    file.writeInt(File::ENTITY_CODE);
+    file.writeString(entity.name);
+    file.writeVector3f(entity.position);
+    file.writeVector3f(entity.rotation);
+    file.writeVector3f(entity.scale);
+
+    file.writeInt(entity.modelIndex);
 }
 
-void writeFloat(FILE* stream, const float f)
-{
-    fwrite(&f, sizeof(float), 1, stream);
-}
-
-void writeVector2f(FILE* stream, const Vector2f v)
-{
-    fwrite(&v, sizeof(Vector2f), 1, stream);
-}
-
-void writeVector3f(FILE* stream, const Vector3f v)
-{
-    fwrite(&v, sizeof(Vector3f), 1, stream);
-}
-
-void writeString(FILE* stream, const std::string s)
-{
-    fwrite(s.data(), sizeof(char), s.length(), stream);
-    fwrite(nullchar, sizeof(char), 1, stream);
-}
-#include <iostream>
 void PsiExporter::exportScene(std::string filePath, const Scene& scene)
 {
-    FILE* pFile;
-    pFile = fopen(filePath.c_str(), "wb");
+    File file;
+    file.open(filePath, File::FileMode::WRITE);
 
-    fwrite(&scene.camera, sizeof(Camera), 1, pFile);
+    file.writeByteArray(&scene.camera, sizeof(Camera), 1);
 
     // Write all materials to the file
-    writeInt(pFile, scene.materials.size());
+    file.writeInt(scene.materials.size());
     for (const Material& material : scene.materials)
-    {
-        fwrite(&materialCode, sizeof(uint32_t), 1, pFile);
-        writeString(pFile, material.name);
-        writeVector3f(pFile, material.albedo);
-        writeVector3f(pFile, material.emission);
-        writeFloat(pFile, material.roughness);
-        writeFloat(pFile, material.metalness);
-        writeBool(pFile, material.hasAlbedoTexture);
-        if (material.hasAlbedoTexture)
-        {
-            writeInt(pFile, material.albedoTex->width);
-            writeInt(pFile, material.albedoTex->height);
-            fwrite(material.albedoTex->data.data(), sizeof(unsigned char), material.albedoTex->data.size(), pFile);
-        }
-    }
+        writeMaterial(file, material);
 
     // Write all models to the file
-    writeInt(pFile, scene.models.size());
-    std::cout << "Num models: " << scene.models.size() << std::endl;
+    file.writeInt(scene.models.size());
+
     for (const Model& model : scene.models)
-    {
-        std::cout << "Num meshes: " << model.meshes.size() << std::endl;
-        writeInt(pFile, model.meshes.size());
-        for (const Mesh& mesh : model.meshes)
-        {
-            fwrite(&meshCode, sizeof(uint32_t), 1, pFile);
-            writeInt(pFile, mesh.vertices.size());
-            writeInt(pFile, mesh.normals.size());
-            writeInt(pFile, mesh.texCoords.size());
-            writeInt(pFile, mesh.faces.size());
-            std::cout << mesh.materialIndex << std::endl;
-            writeInt(pFile, mesh.materialIndex);
-            for (const Vector3f& v : mesh.vertices)
-            {
-                writeVector3f(pFile, v);
-            }
-            for (const Vector3f& n : mesh.normals)
-            {
-                writeVector3f(pFile, n);
-            }
-            for (const Vector2f& t : mesh.texCoords)
-            {
-                writeVector2f(pFile, t);
-            }
-            for (const Face& f : mesh.faces)
-            {
-                writeInt(pFile, f.i0);
-                writeInt(pFile, f.i1);
-                writeInt(pFile, f.i2);
-            }
-        }
-    }
+        writeModel(file, model);
 
     // Write all entities to the file
-    writeInt(pFile, scene.entities.size());
+    file.writeInt(scene.entities.size());
     for (const Entity& entity : scene.entities)
-    {
-        fwrite(&entityCode, sizeof(uint32_t), 1, pFile);
-        writeString(pFile, entity.name);
-        writeVector3f(pFile, entity.position);
-        writeVector3f(pFile, entity.rotation);
-        writeVector3f(pFile, entity.scale);
+        writeEntity(file, entity);
 
-        writeInt(pFile, entity.modelIndex);
-    }
-
-    fclose(pFile);
+    file.close();
 }
