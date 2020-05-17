@@ -82,23 +82,23 @@ bool loadPng(std::string path, Texture& texture)
     return true;
 }
 
-bool loadScene(std::string sceneFile)
+bool convertScene(std::string inputPath, std::string outputPath)
 {
     Scene scene;
 
-    std::cout << "LOADING SCENE: " << sceneFile.c_str() << std::endl;
+    std::cout << "LOADING SCENE: " << inputPath.c_str() << std::endl;
     std::ifstream inFile;
 
-    inFile.open(sceneFile.c_str(), std::ios::in | std::ios::binary);
+    inFile.open(inputPath.c_str(), std::ios::in | std::ios::binary);
 
     if (inFile.fail()) {
-        std::cout << "Failed to load file: " << sceneFile << std::endl;
+        std::cout << "Failed to load file: " << inputPath << std::endl;
         return false;
     }
 
     std::string contents;
     try {
-        contents = File::loadFile(sceneFile.c_str());
+        contents = File::loadFile(inputPath.c_str());
     }
     catch (const std::invalid_argument& e) {
         std::cerr << "File not found" << std::endl;
@@ -312,11 +312,11 @@ bool loadScene(std::string sceneFile)
     }
     
     PsiExporter exporter;
-    exporter.exportScene("C:/Data/Pathtracer/Build/Scene.psi", scene);
+    exporter.exportScene(outputPath, scene);
 
     Scene checkScene;
     PsiImporter importer;
-    bool importSuccess = importer.importScene("C:/Data/Pathtracer/Build/Scene.psi", checkScene);
+    bool importSuccess = importer.importScene(outputPath, checkScene);
 
     if (!importSuccess)
     {
@@ -342,8 +342,12 @@ int main(int argc, char** argv)
     std::vector<std::string> cmdArgs(argv, argv + argc);
 
     std::cout << cmdArgs.size() << std::endl;
+    if (cmdArgs.size() < 3)
+    {
+        std::cout << "Converter syntax: <converter.exe> <input.json> <output.psi>" << std::endl;
+    }
 
-    loadScene("Bathroom.json");
+    convertScene(cmdArgs[1], cmdArgs[2]);
 
     return 0;
 }
