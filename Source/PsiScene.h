@@ -47,8 +47,12 @@ namespace psi
         float roughness = 1;
         float metalness = 0;
 
-        std::unique_ptr<Texture> albedoTex;
+        std::unique_ptr<Texture> albedoTex = nullptr;
+        std::unique_ptr<Texture> normalTex = nullptr;
+        std::unique_ptr<Texture> roughnessTex = nullptr;
         bool hasAlbedoTexture = false;
+        bool hasNormalTexture = false;
+        bool hasRoughnessTexture = false;
     };
 
     struct Face
@@ -62,6 +66,7 @@ namespace psi
         std::vector<Vector3f> vertices;
         std::vector<Vector3f> normals;
         std::vector<Vector2f> texCoords;
+        std::vector<Vector3f> tangents;
         std::vector<Face> faces;
 
         int materialIndex;
@@ -70,6 +75,7 @@ namespace psi
     class Model
     {
     public:
+        std::string name;
         std::vector<psi::Mesh> meshes;
     };
 

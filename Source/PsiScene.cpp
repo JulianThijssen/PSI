@@ -64,7 +64,9 @@ namespace psi
             compare(lhs.roughness, rhs.roughness) &&
             compare(lhs.metalness, rhs.metalness) &&
             compare(lhs.hasAlbedoTexture, rhs.hasAlbedoTexture) &&
-            lhs.hasAlbedoTexture ? compare(*lhs.albedoTex, *rhs.albedoTex) : true;
+            compare(lhs.hasNormalTexture, rhs.hasNormalTexture) &&
+            lhs.hasAlbedoTexture ? compare(*lhs.albedoTex, *rhs.albedoTex) : true &&
+            lhs.hasNormalTexture ? compare(*lhs.normalTex, *rhs.normalTex) : true;
     }
 
     bool operator==(const psi::Face& lhs, const psi::Face& rhs)

@@ -22,6 +22,20 @@ void writeMaterial(File& file, const Material& material)
         file.writeInt(material.albedoTex->height);
         file.writeUnsignedCharArray(material.albedoTex->data);
     }
+    file.writeBool(material.hasNormalTexture);
+    if (material.hasNormalTexture)
+    {
+        file.writeInt(material.normalTex->width);
+        file.writeInt(material.normalTex->height);
+        file.writeUnsignedCharArray(material.normalTex->data);
+    }
+    file.writeBool(material.hasRoughnessTexture);
+    if (material.hasRoughnessTexture)
+    {
+        file.writeInt(material.roughnessTex->width);
+        file.writeInt(material.roughnessTex->height);
+        file.writeUnsignedCharArray(material.roughnessTex->data);
+    }
 }
 
 void writeModel(File& file, const Model& model)
@@ -34,8 +48,9 @@ void writeModel(File& file, const Model& model)
         file.writeInt(mesh.vertices.size());
         file.writeInt(mesh.normals.size());
         file.writeInt(mesh.texCoords.size());
+        file.writeInt(mesh.tangents.size());
         file.writeInt(mesh.faces.size());
-        std::cout << mesh.materialIndex << std::endl;
+        std::cout << "Material index: " << mesh.materialIndex << std::endl;
         file.writeInt(mesh.materialIndex);
         for (const Vector3f& v : mesh.vertices)
         {
@@ -48,6 +63,10 @@ void writeModel(File& file, const Model& model)
         for (const Vector2f& t : mesh.texCoords)
         {
             file.writeVector2f(t);
+        }
+        for (const Vector3f& t : mesh.tangents)
+        {
+            file.writeVector3f(t);
         }
         for (const Face& f : mesh.faces)
         {

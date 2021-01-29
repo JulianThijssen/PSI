@@ -31,6 +31,16 @@ bool PsiImporter::importScene(std::string filePath, Scene& scene)
         {
             file.readTexture(material.albedoTex);
         }
+        material.hasNormalTexture = file.readBool();
+        if (material.hasNormalTexture)
+        {
+            file.readTexture(material.normalTex);
+        }
+        material.hasRoughnessTexture = file.readBool();
+        if (material.hasRoughnessTexture)
+        {
+            file.readTexture(material.roughnessTex);
+        }
         scene.materials.push_back(std::move(material));
     }
 
@@ -51,17 +61,20 @@ bool PsiImporter::importScene(std::string filePath, Scene& scene)
             uint32_t vertexCount = file.readInt();
             uint32_t normalCount = file.readInt();
             uint32_t texCoordCount = file.readInt();
+            uint32_t tangentCount = file.readInt();
             uint32_t faceCount = file.readInt();
             mesh.materialIndex = file.readInt();
 
             mesh.vertices.resize(vertexCount);
             mesh.normals.resize(normalCount);
             mesh.texCoords.resize(texCoordCount);
+            mesh.tangents.resize(tangentCount);
             mesh.faces.resize(faceCount);
 
             file.readVector3fArray(mesh.vertices, vertexCount);
             file.readVector3fArray(mesh.normals, normalCount);
             file.readVector2fArray(mesh.texCoords, texCoordCount);
+            file.readVector3fArray(mesh.tangents, tangentCount);
             file.readFaces(mesh.faces, faceCount);
 
             model.meshes.push_back(mesh);

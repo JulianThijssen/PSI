@@ -195,10 +195,105 @@ bool convertScene(std::string inputPath, std::string outputPath)
                     bool loaded = loadPng(path, *material.albedoTex);
                     material.hasAlbedoTexture = loaded;
                 }
+                if (key == "NormalTex")
+                {
+                    if (tokens.size() != 2)
+                    {
+                        std::cout << "Wrong number of arguments for normal texture" << std::endl;
+                        continue;
+                    }
+                    std::string path = tokens[1];
+
+                    material.normalTex = std::make_unique<Texture>();
+                    bool loaded = loadPng(path, *material.normalTex);
+                    material.hasNormalTexture = loaded;
+                }
+                if (key == "RoughnessTex")
+                {
+                    if (tokens.size() != 2)
+                    {
+                        std::cout << "Wrong number of arguments for roughness texture" << std::endl;
+                        continue;
+                    }
+                    std::string path = tokens[1];
+
+                    material.roughnessTex = std::make_unique<Texture>();
+                    bool loaded = loadPng(path, *material.roughnessTex);
+                    material.hasRoughnessTexture = loaded;
+                }
             }
             scene.materials.push_back(std::move(material));
         }
     }
+    for (json& element : j3["models"])
+    {
+        std::string name = element["id"].get<std::string>();
+        std::string path = element["path"].get<std::string>();
+        std::cout << "Model path: " << path << std::endl;
+
+        Assimp::Importer importer;
+
+        unsigned int flags = aiProcess_Triangulate | aiProcess_GenUVCoords | aiProcess_GenNormals | aiProcess_CalcTangentSpace | aiProcess_SortByPType;
+        const aiScene* aiScene = importer.ReadFile(path, flags);
+
+        if (!aiScene)
+        {
+            std::cout << "Failed to load model: " << importer.GetErrorString() << std::endl;
+            return false;
+        }
+        
+        Model model;
+        for (int i = 0; i < aiScene->mNumMeshes; i++)
+        {
+            const aiMesh* aiMesh = aiScene->mMeshes[i];
+
+            Mesh mesh;
+            mesh.vertices.resize(aiMesh->mNumVertices);
+            mesh.normals.resize(aiMesh->mNumVertices);
+            mesh.tangents.resize(aiMesh->mNumVertices);
+            mesh.faces.resize(aiMesh->mNumFaces);
+
+            for (int j = 0; j < aiMesh->mNumVertices; j++)
+            {
+                mesh.vertices[j] = Vector3f(aiMesh->mVertices[j].x, aiMesh->mVertices[j].y, aiMesh->mVertices[j].z);
+                mesh.normals[j] = Vector3f(aiMesh->mNormals[j].x, aiMesh->mNormals[j].y, aiMesh->mNormals[j].z);
+                mesh.tangents[j] = Vector3f(aiMesh->mTangents[j].x, aiMesh->mTangents[j].y, aiMesh->mTangents[j].z);
+            }
+            if (aiMesh->HasTextureCoords(0))
+            {
+                mesh.texCoords.resize(aiMesh->mNumVertices);
+                for (int j = 0; j < aiMesh->mNumVertices; j++)
+                    mesh.texCoords[j] = Vector2f(aiMesh->mTextureCoords[0][j].x, aiMesh->mTextureCoords[0][j].y);
+            }
+            for (int j = 0; j < aiMesh->mNumFaces; j++)
+            {
+                const aiFace& aiFace = aiMesh->mFaces[j];
+                if (aiFace.mNumIndices < 3)
+                    continue;
+                mesh.faces[j] = Face{ aiFace.mIndices[0], aiFace.mIndices[1], aiFace.mIndices[2] };
+            }
+
+            aiMaterial* mat = aiScene->mMaterials[aiMesh->mMaterialIndex];
+            aiString aiName;
+            mat->Get(AI_MATKEY_NAME, aiName);
+            std::string matName = std::string(aiName.C_Str());
+
+            for (int m = 0; m < scene.materials.size(); m++)
+            {
+                const Material& material = scene.materials[m];
+
+                if (material.name == matName)
+                {
+                    mesh.materialIndex = m;
+                }
+            }
+
+            model.meshes.push_back(mesh);
+        }
+        model.name = name;
+        scene.models.push_back(model);
+    }
+
     for (json& element : j3["objects"]) {
         psi::Entity entity;
 
@@ -239,75 +334,19 @@ bool convertScene(std::string inputPath, std::string outputPath)
         }
         else
         {
-            json& modelElement = element["model"];
-            std::string path = modelElement["path"].get<std::string>();
-            std::cout << path << std::endl;
+            std::string id = element["model"].get<std::string>();
 
-            Assimp::Importer importer;
-
-            unsigned int flags = aiProcess_Triangulate | aiProcess_GenUVCoords | aiProcess_GenNormals | aiProcess_CalcTangentSpace | aiProcess_SortByPType;
-            const aiScene* aiScene = importer.ReadFile(path, flags);
-
-            if (!aiScene)
+            for (int m = 0; m < scene.models.size(); m++)
             {
-                std::cout << "Failed to load model: " << importer.GetErrorString() << std::endl;
-                return false;
+                const Model& model = scene.models[m];
+
+                if (model.name == id)
+                {
+                    entity.modelIndex = m;
+                }
             }
-
-            //std::vector<std::string> materialNames;
-            //for (int i = 0; i < aiScene->mNumMaterials; i++)
-            //{
-            //    const aiMaterial* aiMaterial = aiScene->mMaterials[i];
-
-            //    aiString name;
-            //    aiMaterial->Get(AI_MATKEY_NAME, name);
-
-            //    materialNames.emplace_back(name.C_Str());
-            //}
-            
-            Model model;
-            for (int i = 0; i < aiScene->mNumMeshes; i++)
-            {
-                const aiMesh* aiMesh = aiScene->mMeshes[i];
-
-                Mesh mesh;
-                mesh.vertices.resize(aiMesh->mNumVertices);
-                mesh.normals.resize(aiMesh->mNumVertices);
-                mesh.faces.resize(aiMesh->mNumFaces);
-
-                for (int j = 0; j < aiMesh->mNumVertices; j++)
-                {
-                    mesh.vertices[j] = Vector3f(aiMesh->mVertices[j].x * entity.scale.x, aiMesh->mVertices[j].y * entity.scale.y, aiMesh->mVertices[j].z * entity.scale.z);
-                    mesh.normals[j] = Vector3f(aiMesh->mNormals[j].x, aiMesh->mNormals[j].y, aiMesh->mNormals[j].z);
-                }
-                if (aiMesh->HasTextureCoords(0))
-                {
-                    mesh.texCoords.resize(aiMesh->mNumVertices);
-                    for (int j = 0; j < aiMesh->mNumVertices; j++)
-                        mesh.texCoords[j] = Vector2f(aiMesh->mTextureCoords[0][j].x, aiMesh->mTextureCoords[0][j].y);
-                }
-                for (int j = 0; j < aiMesh->mNumFaces; j++)
-                {
-                    const aiFace& aiFace = aiMesh->mFaces[j];
-                    mesh.faces[j] = Face{ aiFace.mIndices[0], aiFace.mIndices[1], aiFace.mIndices[2] };
-                }
-
-                std::string matName = materialNames[0];// materialNames[aiMesh->mMaterialIndex];
-                for (int m = 0; m < scene.materials.size(); m++)
-                {
-                    const Material& material = scene.materials[m];
-                    
-                    if (material.name == matName)
-                    {
-                        mesh.materialIndex = m;
-                    }
-                }
-
-                model.meshes.push_back(mesh);
-            }
-            scene.models.push_back(model);
-            entity.modelIndex = scene.models.size() - 1;
         }
+
         scene.entities.push_back(entity);
     }
     
@@ -345,6 +384,7 @@ int main(int argc, char** argv)
     if (cmdArgs.size() < 3)
     {
         std::cout << "Converter syntax: <converter.exe> <input.json> <output.psi>" << std::endl;
+        return 0;
     }
 
     convertScene(cmdArgs[1], cmdArgs[2]);
